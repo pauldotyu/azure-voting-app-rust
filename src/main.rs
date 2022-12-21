@@ -1,19 +1,40 @@
+mod database;
+mod model;
+mod schema;
+use crate::schema::votes::vote_value;
 use actix_files::Files;
 use actix_web::middleware::Logger;
 use actix_web::{post, web, App, HttpResponse, HttpServer};
+use database::setup;
+use diesel::dsl::*;
+use diesel::pg::PgConnection;
+use diesel::prelude::*;
+use diesel::r2d2::ConnectionManager;
 use env_logger::Env;
 use handlebars::Handlebars;
+use model::NewVote;
+use r2d2::Pool;
+use schema::votes::dsl::votes;
 use serde::Deserialize;
 use serde_json::json;
+use std::fmt;
 use std::sync::Mutex;
-mod database;
-use database::setup;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 enum VoteValue {
     Dogs,
     Cats,
     Reset,
+}
+
+impl fmt::Display for VoteValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            VoteValue::Cats => write!(f, "Cats"),
+            VoteValue::Dogs => write!(f, "Dogs"),
+            VoteValue::Reset => write!(f, "Reset"),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -22,8 +43,8 @@ struct FormData {
 }
 
 struct AppStateVoteCounter {
-    dog_counter: Mutex<i32>, // <- Mutex is necessary to mutate safely across threads
-    cat_counter: Mutex<i32>,
+    dog_counter: Mutex<i64>, // <- Mutex is necessary to mutate safely across threads
+    cat_counter: Mutex<i64>,
 }
 
 /// extract form data using serde
@@ -33,6 +54,7 @@ struct AppStateVoteCounter {
 async fn submit(
     form: web::Form<FormData>,
     data: web::Data<AppStateVoteCounter>,
+    pool: web::Data<Pool<ConnectionManager<PgConnection>>>,
     hb: web::Data<Handlebars<'_>>,
 ) -> HttpResponse {
     let mut dog_counter = data.dog_counter.lock().unwrap(); // <- get counter's MutexGuard
@@ -56,6 +78,28 @@ async fn submit(
     });
 
     let body = hb.render("index", &data).unwrap();
+
+    // if the vote value is not reset then save the
+    if !matches!(&form.vote, VoteValue::Reset) {
+        let vote_data = NewVote {
+            vote_value: form.vote.to_string(),
+        };
+
+        let mut connection = pool.get().unwrap();
+        let _vote_data = web::block(move || {
+            diesel::insert_into(votes)
+                .values(vote_data)
+                .execute(&mut connection)
+        })
+        .await;
+    } else {
+        let mut connection = pool.get().unwrap();
+        let _vote_data = web::block(move || {
+            diesel::delete(votes).execute(&mut connection);
+        })
+        .await;
+    }
+
     HttpResponse::Ok().body(body)
 }
 
@@ -63,8 +107,8 @@ async fn index(
     data: web::Data<AppStateVoteCounter>,
     hb: web::Data<Handlebars<'_>>,
 ) -> HttpResponse {
-    let dog_counter = data.dog_counter.lock().unwrap(); // <- get dog_counter's MutexGuard
-    let cat_counter = data.cat_counter.lock().unwrap(); // <- get cat_counter's MutexGuard
+    let dog_counter = data.dog_counter.lock().unwrap(); // <- get counter's MutexGuard
+    let cat_counter = data.cat_counter.lock().unwrap();
 
     let data = json!({
         "title": "Azure Voting App",
@@ -85,10 +129,22 @@ async fn main() -> std::io::Result<()> {
     // %a %t "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
+    let mut connection = pool.get().unwrap();
+
+    // Load up the dog votes
+    let dog_query = votes.filter(vote_value.eq("Dogs"));
+    let dog_result = dog_query.select(count(vote_value)).first(&mut connection);
+    let dog_count = dog_result.unwrap_or(0);
+
+    // Load up the cat votes
+    let cat_query = votes.filter(vote_value.eq("Cats"));
+    let cat_result = cat_query.select(count(vote_value)).first(&mut connection);
+    let cat_count = cat_result.unwrap_or(0);
+
     // Note: web::Data created _outside_ HttpServer::new closure
     let vote_counter = web::Data::new(AppStateVoteCounter {
-        dog_counter: Mutex::new(0),
-        cat_counter: Mutex::new(0),
+        dog_counter: Mutex::new(dog_count),
+        cat_counter: Mutex::new(cat_count),
     });
 
     let mut handlebars = Handlebars::new();
