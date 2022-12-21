@@ -1,17 +1,19 @@
 use actix_files::Files;
-use actix_web::{web, App, HttpResponse, HttpServer, post};
+use actix_web::middleware::Logger;
+use actix_web::{post, web, App, HttpResponse, HttpServer};
+use env_logger::Env;
 use handlebars::Handlebars;
+use serde::Deserialize;
 use serde_json::json;
 use std::sync::Mutex;
-use serde::Deserialize;
-use actix_web::middleware::Logger;
-use env_logger::Env;
+mod database;
+use database::setup;
 
 #[derive(Deserialize)]
 enum VoteValue {
     Dogs,
     Cats,
-    Reset
+    Reset,
 }
 
 #[derive(Deserialize)]
@@ -28,7 +30,11 @@ struct AppStateVoteCounter {
 /// this handler gets called only if the content type is *x-www-form-urlencoded*
 /// and the content of the request could be deserialized to a `FormData` struct
 #[post("/")]
-async fn submit(form: web::Form<FormData>, data: web::Data<AppStateVoteCounter>, hb: web::Data<Handlebars<'_>>) -> HttpResponse {
+async fn submit(
+    form: web::Form<FormData>,
+    data: web::Data<AppStateVoteCounter>,
+    hb: web::Data<Handlebars<'_>>,
+) -> HttpResponse {
     let mut dog_counter = data.dog_counter.lock().unwrap(); // <- get counter's MutexGuard
     let mut cat_counter = data.cat_counter.lock().unwrap();
 
@@ -53,10 +59,13 @@ async fn submit(form: web::Form<FormData>, data: web::Data<AppStateVoteCounter>,
     HttpResponse::Ok().body(body)
 }
 
-async fn index(data: web::Data<AppStateVoteCounter>, hb: web::Data<Handlebars<'_>>) -> HttpResponse {
+async fn index(
+    data: web::Data<AppStateVoteCounter>,
+    hb: web::Data<Handlebars<'_>>,
+) -> HttpResponse {
     let dog_counter = data.dog_counter.lock().unwrap(); // <- get dog_counter's MutexGuard
     let cat_counter = data.cat_counter.lock().unwrap(); // <- get cat_counter's MutexGuard
-    
+
     let data = json!({
         "title": "Azure Voting App",
         "button1": "Dogs",
@@ -70,9 +79,11 @@ async fn index(data: web::Data<AppStateVoteCounter>, hb: web::Data<Handlebars<'_
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let pool = setup();
+
     // Default logging format is:
     // %a %t "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T
-    env_logger::init_from_env(Env::default().default_filter_or("info"));    
+    env_logger::init_from_env(Env::default().default_filter_or("info"));
 
     // Note: web::Data created _outside_ HttpServer::new closure
     let vote_counter = web::Data::new(AppStateVoteCounter {
@@ -93,6 +104,7 @@ async fn main() -> std::io::Result<()> {
             // .wrap(Logger::new("%a %{User-Agent}i")) // <- optionally create your own format
             .app_data(vote_counter.clone()) // <- register the created data
             .app_data(handlebars_ref.clone())
+            .data(pool.clone())
             .service(Files::new("/static", "static").show_files_listing())
             .route("/", web::get().to(index))
             .service(submit)
