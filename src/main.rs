@@ -3,15 +3,12 @@ mod model;
 mod schema;
 use crate::schema::votes::vote_value;
 use actix_files::Files;
-use actix_web::middleware::Logger;
-use actix_web::{post, web, App, HttpResponse, HttpServer};
+use actix_web::{middleware::Logger, post, web, App, HttpResponse, HttpServer};
 use database::setup;
-use diesel::dsl::*;
-use diesel::pg::PgConnection;
-use diesel::prelude::*;
-use diesel::r2d2::ConnectionManager;
+use diesel::{dsl::*, pg::PgConnection, prelude::*, r2d2::ConnectionManager};
 use env_logger::Env;
 use handlebars::Handlebars;
+use log::info;
 use model::NewVote;
 use r2d2::Pool;
 use schema::votes::dsl::votes;
@@ -95,7 +92,7 @@ async fn submit(
     } else {
         let mut connection = pool.get().unwrap();
         let _vote_data = web::block(move || {
-            diesel::delete(votes).execute(&mut connection);
+            let _ = diesel::delete(votes).execute(&mut connection);
         })
         .await;
     }
@@ -123,12 +120,11 @@ async fn index(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let pool = setup();
-
     // Default logging format is:
     // %a %t "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
+    let pool = setup();
     let mut connection = pool.get().unwrap();
 
     // Load up the dog votes
@@ -153,7 +149,7 @@ async fn main() -> std::io::Result<()> {
         .unwrap();
     let handlebars_ref = web::Data::new(handlebars);
 
-    println!("Listening on port 8080");
+    info!("Listening on port 8080");
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
