@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azure-voting-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: azure-voting-app
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  minReadySeconds: 5
+  template:
+    metadata:
+      labels:
+        app: azure-voting-app
+    spec:
+      nodeSelector:
+        "kubernetes.io/os": linux
+      containers:
+      - name: azure-voting-app
+        image: ghcr.io/pauldotyu/azure-voting-app-rust:v0.1
+        ports:
+        - containerPort: 8080
+          name: http-web-svc
+        env:
+        - name: DATABASE_URL
+          value: "postgres://postgres:mypassword@azure-voting-db"

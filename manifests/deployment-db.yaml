@@ -1,0 +1,26 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azure-voting-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: azure-voting-db
+  template:
+    metadata:
+      labels:
+        app: azure-voting-db
+    spec:
+      nodeSelector:
+        "kubernetes.io/os": linux
+      containers:
+      - name: azure-voting-db
+        image: postgres:15.0-alpine
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "mypassword"
+        ports:
+        - containerPort: 5432
+          name: psql
