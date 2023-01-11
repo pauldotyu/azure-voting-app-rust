@@ -21,10 +21,18 @@ spec:
         "kubernetes.io/os": linux
       containers:
       - name: azure-voting-app
-        image: ghcr.io/pauldotyu/azure-voting-app-rust:v0.1-alpha
+        image: ghcr.io/pauldotyu/azure-voting-app-rust:v0.1
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
-          name: http-web-svc
+          name: web
         env:
         - name: DATABASE_URL
           value: "postgres://postgres:mypassword@azure-voting-db"
+        resources:
+          limits:
+            memory: "30Mi"
+            cpu: "6m"
+          requests:      
+            memory: "10Mi"
+            cpu: "2m" 

@@ -18,9 +18,25 @@ spec:
       containers:
       - name: azure-voting-db
         image: postgres:15.0-alpine
+        imagePullPolicy: Always
         env:
         - name: POSTGRES_PASSWORD
           value: "mypassword"
         ports:
         - containerPort: 5432
           name: psql
+        volumeMounts:
+        - name: persistent-storage
+          mountPath: "/var/lib/postgresql/data"
+          subPath: "data"
+        resources:
+          limits:
+            memory: "120Mi"
+            cpu: "3m"
+          requests:
+            memory: "40Mi"
+            cpu: "1m" 
+      volumes:
+      - name: persistent-storage
+        persistentVolumeClaim:
+          claimName: azure-managed-disk
