@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate lazy_static;
+
 mod database;
 mod model;
 mod schema;
@@ -14,34 +17,59 @@ use r2d2::Pool;
 use schema::votes::dsl::votes;
 use serde::Deserialize;
 use serde_json::json;
+use std::env::var;
 use std::fmt;
 use std::sync::Mutex;
 
+
+lazy_static! {
+    static ref FIRST_VALUE: String = var("FIRST_VALUE").unwrap_or("Dogs".to_string());
+    static ref SECOND_VALUE: String = var("SECOND_VALUE").unwrap_or("Cats".to_string());
+}
+
 #[derive(Debug, Deserialize)]
 enum VoteValue {
-    Dogs,
-    Cats,
+    FirstValue,
+    SecondValue,
     Reset,
 }
 
 impl fmt::Display for VoteValue {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            VoteValue::Cats => write!(f, "Cats"),
-            VoteValue::Dogs => write!(f, "Dogs"),
+            VoteValue::SecondValue => write!(f, "{}", *SECOND_VALUE),
+            VoteValue::FirstValue => write!(f, "{}", *FIRST_VALUE),
             VoteValue::Reset => write!(f, "Reset"),
         }
     }
 }
 
+impl VoteValue {
+    fn source_value(input: &str) -> VoteValue {
+        if input == *FIRST_VALUE {
+            return VoteValue::FirstValue
+        }
+        else if input == *SECOND_VALUE {
+            return VoteValue::SecondValue
+        }
+        else if input == "Reset" {
+            return VoteValue::Reset
+        }
+        else {
+            panic!("Failed to match the vote type from {}", input);
+        };
+           
+    }
+}
+
 #[derive(Deserialize)]
 struct FormData {
-    vote: VoteValue,
+    vote: String,
 }
 
 struct AppStateVoteCounter {
-    dog_counter: Mutex<i64>, // <- Mutex is necessary to mutate safely across threads
-    cat_counter: Mutex<i64>,
+    first_value_counter: Mutex<i64>, // <- Mutex is necessary to mutate safely across threads
+    second_value_counter: Mutex<i64>,
 }
 
 /// extract form data using serde
@@ -54,30 +82,35 @@ async fn submit(
     pool: web::Data<Pool<ConnectionManager<PgConnection>>>,
     hb: web::Data<Handlebars<'_>>,
 ) -> HttpResponse {
-    let mut dog_counter = data.dog_counter.lock().unwrap(); // <- get counter's MutexGuard
-    let mut cat_counter = data.cat_counter.lock().unwrap();
+    let mut first_value_counter = data.first_value_counter.lock().unwrap(); // <- get counter's MutexGuard
+    let mut second_value_counter = data.second_value_counter.lock().unwrap();
 
-    match &form.vote {
-        VoteValue::Dogs => *dog_counter += 1, // <- access counter inside MutexGuard
-        VoteValue::Cats => *cat_counter += 1,
+    info!("Vote is: {}", &form.vote);
+    info!("Debug Vote is: {:?}", &form.vote);
+    
+    let vote = VoteValue::source_value(&form.vote);
+
+    match vote {
+        VoteValue::FirstValue => *first_value_counter += 1, // <- access counter inside MutexGuard
+        VoteValue::SecondValue => *second_value_counter += 1,
         VoteValue::Reset => {
-            *dog_counter = 0;
-            *cat_counter = 0;
+            *first_value_counter = 0;
+            *second_value_counter = 0;
         }
     }
 
     let data = json!({
         "title": "Azure Voting App",
-        "button1": "Dogs",
-        "button2": "Cats",
-        "value1": dog_counter.to_string(),
-        "value2": cat_counter.to_string()
+        "button1": VoteValue::FirstValue.to_string(),
+        "button2": VoteValue::SecondValue.to_string(),
+        "value1": first_value_counter.to_string(),
+        "value2": second_value_counter.to_string()
     });
 
     let body = hb.render("index", &data).unwrap();
 
     // if the vote value is not reset then save the
-    if !matches!(&form.vote, VoteValue::Reset) {
+    if !matches!(vote, VoteValue::Reset) {
         let vote_data = NewVote {
             vote_value: form.vote.to_string(),
         };
@@ -104,15 +137,18 @@ async fn index(
     data: web::Data<AppStateVoteCounter>,
     hb: web::Data<Handlebars<'_>>,
 ) -> HttpResponse {
-    let dog_counter = data.dog_counter.lock().unwrap(); // <- get counter's MutexGuard
-    let cat_counter = data.cat_counter.lock().unwrap();
+    let first_value_counter = data.first_value_counter.lock().unwrap(); // <- get counter's MutexGuard
+    let second_value_counter = data.second_value_counter.lock().unwrap();
+
+    info!("Value 1: {}", VoteValue::FirstValue);
+    info!("Value 2: {}", VoteValue::SecondValue);
 
     let data = json!({
         "title": "Azure Voting App",
-        "button1": "Dogs",
-        "button2": "Cats",
-        "value1": dog_counter.to_string(),
-        "value2": cat_counter.to_string()
+        "button1": VoteValue::FirstValue.to_string(),
+        "button2": VoteValue::SecondValue.to_string(),
+        "value1": first_value_counter.to_string(),
+        "value2": second_value_counter.to_string()
     });
     let body = hb.render("index", &data).unwrap();
     HttpResponse::Ok().body(body)
@@ -128,19 +164,19 @@ async fn main() -> std::io::Result<()> {
     let mut connection = pool.get().unwrap();
 
     // Load up the dog votes
-    let dog_query = votes.filter(vote_value.eq("Dogs"));
-    let dog_result = dog_query.select(count(vote_value)).first(&mut connection);
-    let dog_count = dog_result.unwrap_or(0);
+    let first_value_query = votes.filter(vote_value.eq(FIRST_VALUE.clone()));
+    let first_value_result = first_value_query.select(count(vote_value)).first(&mut connection);
+    let first_value_count = first_value_result.unwrap_or(0);
 
     // Load up the cat votes
-    let cat_query = votes.filter(vote_value.eq("Cats"));
-    let cat_result = cat_query.select(count(vote_value)).first(&mut connection);
-    let cat_count = cat_result.unwrap_or(0);
+    let second_value_query = votes.filter(vote_value.eq(SECOND_VALUE.clone()));
+    let second_value_result = second_value_query.select(count(vote_value)).first(&mut connection);
+    let second_value_count = second_value_result.unwrap_or(0);
 
     // Note: web::Data created _outside_ HttpServer::new closure
     let vote_counter = web::Data::new(AppStateVoteCounter {
-        dog_counter: Mutex::new(dog_count),
-        cat_counter: Mutex::new(cat_count),
+        first_value_counter: Mutex::new(first_value_count),
+        second_value_counter: Mutex::new(second_value_count),
     });
 
     let mut handlebars = Handlebars::new();
