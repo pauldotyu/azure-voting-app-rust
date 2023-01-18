@@ -1,8 +1,0 @@
-resources:
-- kubernetes.yaml
-
-# Change the image name and version
-images:
-- name: myimage:latest
-  newName: ghcr.io/pauldotyu/azure-voting-app-rust
-  newTag: v0.1
