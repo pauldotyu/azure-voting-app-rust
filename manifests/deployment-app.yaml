@@ -21,7 +21,7 @@ spec:
         "kubernetes.io/os": linux
       containers:
       - name: azure-voting-app
-        image: ghcr.io/pauldotyu/azure-voting-app-rust:v0.1
+        image: ghcr.io/pauldotyu/azure-voting-app-rust:v0.1-alpha
         ports:
         - containerPort: 8080
           name: http-web-svc
