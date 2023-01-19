@@ -20,7 +20,10 @@ spec:
         image: postgres:15.0-alpine
         env:
         - name: POSTGRES_PASSWORD
-          value: "mypassword"
+          valueFrom:
+            secretKeyRef:
+              name: azure-voting-secret
+              key: POSTGRES_PASSWORD
         ports:
         - containerPort: 5432
           name: psql
