@@ -1,4 +1,3 @@
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,9 +17,29 @@ spec:
       containers:
       - name: azure-voting-db
         image: postgres:15.0-alpine
+        imagePullPolicy: Always
         env:
         - name: POSTGRES_PASSWORD
           value: "mypassword"
         ports:
         - containerPort: 5432
           name: psql
+        resources:
+          limits:
+            memory: "120Mi"
+            cpu: "3m"
+          requests:
+            memory: "40Mi"
+            cpu: "1m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: azure-voting-db
+spec:
+  ports:
+  - port: 5432
+    protocol: TCP
+    targetPort: 5432
+  selector:
+    app: azure-voting-db
