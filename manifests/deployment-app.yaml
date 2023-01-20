@@ -57,4 +57,20 @@ spec:
     targetPort: 8080
   selector:
     app: azure-voting-app
-  type: LoadBalancer
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: azure-voting-app
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  rules:
+  - http:
+      paths:
+      - backend:
+          service:
+            name: azure-voting-app
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
