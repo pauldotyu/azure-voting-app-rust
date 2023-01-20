@@ -14,7 +14,7 @@ pub fn setup() -> Pool<ConnectionManager<PgConnection>> {
 
     info!("Establishing database connection");
     let mut connection: PgConnection;
-    let mut count = 0;
+    // let mut count = 0;
     loop {
         match PgConnection::establish(&database_url) {
             Ok(conn) => {
@@ -22,10 +22,10 @@ pub fn setup() -> Pool<ConnectionManager<PgConnection>> {
                 break;
             }
             Err(_) => {
-                count += 1;
-                if count > 6 {
-                    panic!("Failed to establish a database connection after 6 attempts.");
-                }
+                // count += 1;
+                // if count > 12 {
+                //     panic!("Failed to establish a database connection after 12 attempts.");
+                // }
                 error!("Failed to establish a database connection, retrying in 5 seconds");
                 std::thread::sleep(Duration::from_secs(5));
             }

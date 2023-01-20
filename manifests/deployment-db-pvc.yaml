@@ -31,6 +31,14 @@ spec:
           requests:
             memory: "40Mi"
             cpu: "1m"
+        volumeMounts:
+        - name: mypvc
+          mountPath: "/var/lib/postgresql/data"
+          subPath: "data"
+      volumes:
+      - name: mypvc
+        persistentVolumeClaim:
+          claimName: pvc-azuredisk
 ---
 apiVersion: v1
 kind: Service
